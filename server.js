@@ -2,19 +2,29 @@ const express = require('express');
 const multer = require('multer');
 const http = require('http');
 const socketIo = require('socket.io');
-const fs = require('fs');
+const fs = require('fs').promises; // Utiliser les API promises pour une gestion asynchrone
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
-const port = 8080; // Changement du port de 3000 à 8080
+const port = process.env.PORT || 8080; // Utiliser la variable d'environnement PORT pour Render
 
 // Dossier pour stocker les images
 const uploadsDir = path.join(__dirname, 'Uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(UploadsDir);
+
+// Créer le dossier Uploads de manière asynchrone
+async function ensureUploadsDir() {
+  try {
+    await fs.mkdir(uploadsDir, { recursive: true });
+    console.log('Dossier Uploads créé ou déjà existant');
+  } catch (err) {
+    console.error('Erreur lors de la création du dossier Uploads :', err);
+  }
 }
+
+// Appeler la fonction pour s'assurer que le dossier existe
+ensureUploadsDir();
 
 // Configuration de multer pour l'upload des images
 const storage = multer.diskStorage({
@@ -40,17 +50,18 @@ let config = {
 };
 
 // Charger la configuration depuis le fichier
-if (fs.existsSync(configFilePath)) {
+async function loadConfig() {
   try {
-    config = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
+    const data = await fs.readFile(configFilePath, 'utf8');
+    config = JSON.parse(data);
     console.log('Configuration chargée :', config);
   } catch (err) {
-    console.error('Erreur lors du chargement de la configuration :', err);
+    console.error('Erreur lors du chargement de la configuration, utilisation des valeurs par défaut :', err);
+    await fs.writeFile(configFilePath, JSON.stringify(config, null, 2));
+    console.log('Configuration par défaut enregistrée :', config);
   }
-} else {
-  fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2));
-  console.log('Configuration par défaut enregistrée :', config);
 }
+loadConfig();
 
 // Middleware pour parser les requêtes JSON
 app.use(express.json());
@@ -78,7 +89,7 @@ app.post('/upload', upload.single('image'), (req, res) => {
 });
 
 // Endpoint pour recevoir les configurations depuis l'application Android
-app.post('/set-config', (req, res) => {
+app.post('/set-config', async (req, res) => {
   const { ssid, password, phoneNumber, startHour, endHour } = req.body;
 
   // Valider les champs fournis
@@ -113,7 +124,7 @@ app.post('/set-config', (req, res) => {
 
   // Enregistrer dans le fichier
   try {
-    fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2));
+    await fs.writeFile(configFilePath, JSON.stringify(config, null, 2));
     console.log('Configuration mise à jour :', config);
     res.status(200).send('Configuration mise à jour avec succès');
   } catch (err) {
@@ -137,5 +148,5 @@ io.on('connection', (socket) => {
 
 // Lancer le serveur
 server.listen(port, () => {
-  console.log(`🚀 Serveur en écoute sur http://192.168.1.100:${port}`);
+  console.log(`🚀 Serveur en écoute sur http://0.0.0.0:${port}`);
 });
